@@ -488,7 +488,7 @@ and a complete visit evidence gallery for older multi-file records. -->
         <div class="storage-breakdown"><span><em>BA</em><strong id="storageUsageBa">0 B · 0 foto</strong></span><span><em>Kunjungan</em><strong id="storageUsageVisit">0 B · 0 file bukti</strong></span></div><div class="storage-error" id="storageUsageError"></div>
       </div>
       <span class="user-email" id="userEmail">-</span>
-      <span class="app-version">Versi 76 · Kunjungan Multi-Station</span>
+      <span class="app-version">Versi 76.1 · Perbaikan Sinkronisasi Kunjungan</span>
       <button class="btn-ghost theme-btn" id="btnTheme" type="button"><span id="themeIcon">☀</span><span id="themeText">Mode Terang</span></button>
       <button class="btn-ghost" id="btnLogout" type="button" style="width:100%;padding:7px 10px;font-size:12px;">Keluar</button>
     </div>
@@ -1560,7 +1560,9 @@ and a complete visit evidence gallery for older multi-file records. -->
   var BA_SELECT='id,created_at,kode_toko,nama_toko,jenis,tanggal_transaksi,nomor_booking,trx_num,nominal,pic_virtual,nomor_ba,keterangan,bukti_paths';
   var COMPLAINT_SELECT='id,created_at,tanggal,shift,pic_virtual,kode_toko,jenis_biller,kode_booking,tanggal_transaksi,status_web,follow_up,status_fu,nomor_personil';
   var MASTER_SELECT='kode_toko,nama_toko,latitude,longitude';
-  var VISIT_SELECT='id,created_at,tanggal_kunjungan,petugas,kode_toko,nama_toko,wirecard_condition,wirecard_connection,bca_condition,bca_connection,virtual_program,h2h,tbm,akses,brilink,sales_draft,temuan,tindak_lanjut,status_tindak_lanjut,bukti_paths,migration_key,legacy_snapshot_applied,created_by_nik,updated_by_nik,updated_at,client_request_id,store_profile,edc_stations';
+  var VISIT_SELECT_LEGACY='id,created_at,tanggal_kunjungan,petugas,kode_toko,nama_toko,wirecard_condition,wirecard_connection,bca_condition,bca_connection,virtual_program,h2h,tbm,akses,brilink,sales_draft,temuan,tindak_lanjut,status_tindak_lanjut,bukti_paths,migration_key,legacy_snapshot_applied,created_by_nik,updated_by_nik,updated_at,client_request_id';
+  var VISIT_SELECT=VISIT_SELECT_LEGACY+',store_profile,edc_stations';
+  var visitSchemaCompatibilityError=null;
 
   function migrateNomorBA(){
     var changed = false;
@@ -1574,10 +1576,20 @@ and a complete visit evidence gallery for older multi-file records. -->
     if (changed) { saveCounter(baCounter); }
   }
 
-  async function loadAllFieldVisits(){
+  async function queryAllFieldVisits(selectColumns){
     var all=[],from=0,pageSize=1000;
-    while(true){var page=await db.from('field_visits').select(VISIT_SELECT).order('tanggal_kunjungan',{ascending:false}).range(from,from+pageSize-1);if(page.error)return {data:all,error:page.error};var batch=page.data||[];all=all.concat(batch);if(batch.length<pageSize)break;from+=pageSize;}
+    while(true){var page=await db.from('field_visits').select(selectColumns).order('tanggal_kunjungan',{ascending:false}).range(from,from+pageSize-1);if(page.error)return {data:all,error:page.error};var batch=page.data||[];all=all.concat(batch);if(batch.length<pageSize)break;from+=pageSize;}
     return {data:all,error:null};
+  }
+  async function loadAllFieldVisits(){
+    var current=await queryAllFieldVisits(VISIT_SELECT);
+    if(!current.error){visitSchemaCompatibilityError=null;return current;}
+    console.error('Query kunjungan V76 gagal:',current.error);
+    var legacy=await queryAllFieldVisits(VISIT_SELECT_LEGACY);
+    if(!legacy.error){visitSchemaCompatibilityError=current.error;legacy.schemaWarning=current.error;return legacy;}
+    console.error('Query kunjungan kompatibilitas juga gagal:',legacy.error);
+    visitSchemaCompatibilityError=null;
+    return {data:[],error:legacy.error,primaryError:current.error};
   }
   async function loadOnlineData(silent){
     if (!currentUser) return;
@@ -1597,10 +1609,11 @@ and a complete visit evidence gallery for older multi-file records. -->
     masterToko = {};masterStoreDetails={};
     (results[2].data || []).forEach(function(s){var code=String(s.kode_toko).toUpperCase();masterToko[code]=s.nama_toko;masterStoreDetails[code]={nama:s.nama_toko,latitude:s.latitude==null?null:Number(s.latitude),longitude:s.longitude==null?null:Number(s.longitude)};});
     renderMasterInfo(); renderDashboard(); renderKomplain(); renderDataTab(); renderVisits(); if(routeMapInitialized)renderVisitRoute();
-    if(results[3].error && !silent) document.getElementById('visitMsg').innerHTML='<div class="msg msg-warn">Tabel kunjungan belum tersedia. Jalankan file SETUP-REKAP-KUNJUNGAN-LAPANGAN.sql di Supabase.</div>';
-    setSyncState(results[3].error?'Kunjungan gagal sinkron':'Tersinkron',!!results[3].error);
+    if(results[3].error && !silent) document.getElementById('visitMsg').innerHTML='<div class="msg msg-error"><strong>Riwayat kunjungan gagal dimuat.</strong><br>'+escapeHtml(results[3].error.message||String(results[3].error))+'</div>';
+    else if(results[3].schemaWarning && !silent) document.getElementById('visitMsg').innerHTML='<div class="msg msg-warn"><strong>Riwayat ditampilkan dalam mode kompatibilitas.</strong><br>Data lama aman dan sudah dimuat. Fitur multi-station belum dapat disimpan sampai akses kolom baru diperbaiki. Detail: '+escapeHtml(results[3].schemaWarning.message||String(results[3].schemaWarning))+'</div>';
+    setSyncState(results[3].error?'Kunjungan gagal sinkron':results[3].schemaWarning?'Tersinkron (kompatibilitas)':'Tersinkron',!!results[3].error);
     document.getElementById('lastSyncText').textContent = 'Update ' + new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    if(results[3].error)setConnectionBanner('Data kunjungan gagal disinkronkan. Jalankan SQL v38 jika belum, lalu coba kembali.',true,true);else setConnectionBanner('',false,false);
+    if(results[3].error)setConnectionBanner('Data kunjungan gagal disinkronkan: '+(results[3].error.message||'error tidak diketahui'),true,true);else if(results[3].schemaWarning)setConnectionBanner('Riwayat kunjungan sudah tampil dalam mode kompatibilitas. Akses kolom multi-station perlu diperbaiki.',true,true);else setConnectionBanner('',false,false);
     })();
     try{return await fullSyncInFlight;}finally{fullSyncInFlight=null;}
   }
@@ -2471,6 +2484,7 @@ and a complete visit evidence gallery for older multi-file records. -->
     e.preventDefault();
     if(!requireModuleAccess('visits'))return;
     var msg=document.getElementById('visitMsg');
+    if(visitSchemaCompatibilityError){msg.innerHTML='<div class="msg msg-error"><strong>Belum dapat menyimpan kunjungan multi-station.</strong><br>Riwayat lama tetap aman dan dapat dilihat. Supabase menolak kolom baru dengan pesan: '+escapeHtml(visitSchemaCompatibilityError.message||String(visitSchemaCompatibilityError))+'</div>';msg.scrollIntoView({behavior:'smooth',block:'center'});return;}
     var primaryStation=visitStations[0]||newVisitStation('Kasir Utama');var cleanStations=visitStations.map(function(s,index){return {station_id:s.station_id||('station_'+(index+1)),station_name:s.station_name||('Station '+(index+1)),bca_condition:s.bca_condition,bca_status:s.bca_status,wirecard_condition:s.wirecard_condition,wirecard_status:s.wirecard_status};});var data={
       tanggal_kunjungan:document.getElementById('visitDate').value,petugas:currentEmployee&&currentEmployee.nama?String(currentEmployee.nama).trim():'',
       kode_toko:document.getElementById('visitStoreCode').value.trim().toUpperCase(),nama_toko:document.getElementById('visitStoreName').value.trim(),
