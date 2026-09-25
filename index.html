@@ -488,7 +488,7 @@ and a complete visit evidence gallery for older multi-file records. -->
         <div class="storage-breakdown"><span><em>BA</em><strong id="storageUsageBa">0 B · 0 foto</strong></span><span><em>Kunjungan</em><strong id="storageUsageVisit">0 B · 0 file bukti</strong></span></div><div class="storage-error" id="storageUsageError"></div>
       </div>
       <span class="user-email" id="userEmail">-</span>
-      <span class="app-version">Versi 76.1 · Perbaikan Sinkronisasi Kunjungan</span>
+      <span class="app-version">Versi 76.2 · Sinkronisasi Kunjungan via RPC</span>
       <button class="btn-ghost theme-btn" id="btnTheme" type="button"><span id="themeIcon">☀</span><span id="themeText">Mode Terang</span></button>
       <button class="btn-ghost" id="btnLogout" type="button" style="width:100%;padding:7px 10px;font-size:12px;">Keluar</button>
     </div>
@@ -1582,6 +1582,9 @@ and a complete visit evidence gallery for older multi-file records. -->
     return {data:all,error:null};
   }
   async function loadAllFieldVisits(){
+    var rpcResult=await db.rpc('list_field_visits_v76');
+    if(!rpcResult.error){visitSchemaCompatibilityError=null;return {data:Array.isArray(rpcResult.data)?rpcResult.data:[],error:null};}
+    console.warn('RPC kunjungan V76 belum tersedia, mencoba REST:',rpcResult.error);
     var current=await queryAllFieldVisits(VISIT_SELECT);
     if(!current.error){visitSchemaCompatibilityError=null;return current;}
     console.error('Query kunjungan V76 gagal:',current.error);
@@ -2508,8 +2511,7 @@ and a complete visit evidence gallery for older multi-file records. -->
     var submitBtn=this.querySelector('button[type="submit"]');submitBtn.disabled=true;submitBtn.textContent='Menyimpan...';
     if(!navigator.onLine){submitBtn.disabled=false;submitBtn.textContent='Simpan Kunjungan';msg.innerHTML='<div class="msg msg-error">Perangkat sedang offline. Form tidak dihapus. <button class="summary-link" type="button" onclick="document.getElementById(\'visitForm\').requestSubmit()">Coba Simpan Lagi</button></div>';updateNetworkState();return;}
     setSyncState('Membuat kolase bukti...',false);submitBtn.textContent='Membuat kolase...';var collageFiles=[];try{collageFiles=await buildVisitCollages(data.kode_toko,data.tanggal_kunjungan);}catch(err){submitBtn.disabled=false;submitBtn.textContent='Simpan Kunjungan';msg.innerHTML='<div class="msg msg-error">Gagal membuat kolase: '+escapeHtml(err.message||String(err))+'</div>';setSyncState('Kolase gagal',true);return;}submitBtn.textContent='Menyimpan...';setSyncState('Menyimpan kunjungan...',false);
-    var inserted=await db.from('field_visits').insert(data).select().single();
-    if(inserted.error&&inserted.error.code==='23505')inserted=await db.from('field_visits').select('*').eq('client_request_id',data.client_request_id).single();
+    var inserted=await db.rpc('save_field_visit_v76',{p_payload:data});
     if(inserted.error){submitBtn.disabled=false;submitBtn.textContent='Simpan Kunjungan';msg.innerHTML='<div class="msg msg-error">Gagal menyimpan: '+escapeHtml(inserted.error.message)+' <button class="summary-link" type="button" onclick="document.getElementById(\'visitForm\').requestSubmit()">Coba Simpan Lagi</button></div>';setSyncState('Gagal menyimpan',true);setConnectionBanner('Kunjungan belum terkonfirmasi tersimpan. Gunakan Coba Simpan Lagi; sistem akan mencegah data ganda.',true,true);return;}
     var paths=[],uploadErrors=[];
     for(var i=0;i<collageFiles.length;i++){
@@ -2676,7 +2678,7 @@ and a complete visit evidence gallery for older multi-file records. -->
     e.preventDefault();var id=document.getElementById('visitEditId').value,v=visitList.find(function(x){return x.id===id;}),msg=document.getElementById('visitEditMsg');if(!canEditVisit(v)){msg.innerHTML='<div class="msg msg-error">Akses edit tidak tersedia.</div>';return;}
     var editedStations=(v.edcStations||[]).map(function(s){return Object.assign({},s);});if(!editedStations.length)editedStations=[{station_id:'legacy_station_1',station_name:'Kasir Utama'}];editedStations[0]=Object.assign({},editedStations[0],{wirecard_condition:document.getElementById('visitEditWirecardCondition').value,wirecard_status:document.getElementById('visitEditWirecardConnection').value,bca_condition:document.getElementById('visitEditBcaCondition').value,bca_status:document.getElementById('visitEditBcaConnection').value});var data={tanggal_kunjungan:document.getElementById('visitEditDate').value,store_profile:v.storeProfile||'STANDARD',edc_stations:editedStations,wirecard_condition:editedStations[0].wirecard_condition,wirecard_connection:editedStations[0].wirecard_status,bca_condition:editedStations[0].bca_condition,bca_connection:editedStations[0].bca_status,virtual_program:document.getElementById('visitEditVirtualProgram').value,h2h:document.getElementById('visitEditH2h').value,tbm:document.getElementById('visitEditTbm').value,akses:document.getElementById('visitEditAkses').value,brilink:document.getElementById('visitEditBrilink').value,sales_draft:document.getElementById('visitEditSalesDraft').value,temuan:document.getElementById('visitEditResult').value.trim()||null,tindak_lanjut:document.getElementById('visitEditFollowUp').value.trim()||null,status_tindak_lanjut:document.getElementById('visitEditFollowUpStatus').value,updated_by_nik:currentEmployee.nik,updated_at:new Date().toISOString()};
     var candidate=mapVisitFromDb(Object.assign({},data,{id:v.id,kode_toko:v.storeCode,nama_toko:v.storeName,petugas:v.officer,bukti_paths:v.evidencePaths})),issues=visitIssueSummary(candidate);if(issues.length&&!data.tindak_lanjut){msg.innerHTML='<div class="msg msg-error">Isi tindak lanjut karena masih terdapat kendala.</div>';return;}data.status_tindak_lanjut=issues.length?(data.status_tindak_lanjut==='SELESAI'?'SELESAI':'PENDING'):'TIDAK ADA';
-    var btn=document.getElementById('visitEditSave');btn.disabled=true;btn.textContent='Menyimpan...';setSyncState('Menyimpan perubahan...',false);var updated=await db.from('field_visits').update(data).eq('id',id).select().single();btn.disabled=false;btn.textContent='Simpan Perubahan';
+    var btn=document.getElementById('visitEditSave');btn.disabled=true;btn.textContent='Menyimpan...';setSyncState('Menyimpan perubahan...',false);var updated=await db.rpc('update_field_visit_v76',{p_id:id,p_payload:data});btn.disabled=false;btn.textContent='Simpan Perubahan';
     if(updated.error){msg.innerHTML='<div class="msg msg-error">Gagal memperbarui: '+escapeHtml(updated.error.message)+'</div>';setSyncState('Gagal menyimpan',true);setConnectionBanner('Perubahan belum tersimpan. Data pada form tetap tersedia untuk dicoba kembali.',true,true);return;}
     var mapped=mapVisitFromDb(updated.data),index=visitList.findIndex(function(x){return x.id===id;});if(index>=0)visitList[index]=mapped;renderVisits();renderDashboard();setSyncState('Tersinkron',false);showToast('Kunjungan '+v.storeCode+' berhasil diperbarui.');await loadVisitAudit(id);setTimeout(closeVisitEdit,450);
   });
