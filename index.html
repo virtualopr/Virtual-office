@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VIRTUAL OFFICE OPTIMIZED v76 KUNJUNGAN MULTI-STATION - 2026-09-25
+<!-- VIRTUAL OFFICE OPTIMIZED v76.4 FILTER BA BULANAN - 2026-10-03
 CHANGELOG: mobile drawer navigation, app bar, one-column forms, card tables,
 touch-friendly controls, responsive modals, centered mobile branch code,
 complete navigation icons, section-aware pagination, user management,
@@ -488,7 +488,7 @@ and a complete visit evidence gallery for older multi-file records. -->
         <div class="storage-breakdown"><span><em>BA</em><strong id="storageUsageBa">0 B · 0 foto</strong></span><span><em>Kunjungan</em><strong id="storageUsageVisit">0 B · 0 file bukti</strong></span></div><div class="storage-error" id="storageUsageError"></div>
       </div>
       <span class="user-email" id="userEmail">-</span>
-      <span class="app-version">Versi 76.3 · Multi-Station Kompatibel</span>
+      <span class="app-version">Versi 76.4 · Filter BA Bulanan</span>
       <button class="btn-ghost theme-btn" id="btnTheme" type="button"><span id="themeIcon">☀</span><span id="themeText">Mode Terang</span></button>
       <button class="btn-ghost" id="btnLogout" type="button" style="width:100%;padding:7px 10px;font-size:12px;">Keluar</button>
     </div>
@@ -570,21 +570,21 @@ and a complete visit evidence gallery for older multi-file records. -->
     <div class="stat-grid">
       <div class="stat-card"><div class="label">Transaksi Hari Ini</div><div class="value accent" id="statTodayCount">0</div></div>
       <div class="stat-card"><div class="label">Nominal Hari Ini</div><div class="value accent" id="statTodayNominal">Rp0</div></div>
-      <div class="stat-card"><div class="label">Total Transaksi</div><div class="value" id="statTotalCount">0</div></div>
-      <div class="stat-card"><div class="label">Total Nominal</div><div class="value" id="statTotalNominal">Rp0</div></div>
+      <div class="stat-card"><div class="label">Transaksi Bulan Ini</div><div class="value" id="statTotalCount">0</div></div>
+      <div class="stat-card"><div class="label">Nominal Bulan Ini</div><div class="value" id="statTotalNominal">Rp0</div></div>
     </div>
     <div class="panel-row">
       <div class="box">
-        <h3>Per Jenis</h3>
+        <h3>Per Jenis · Bulan Ini</h3>
         <div id="byJenisBox"><p class="muted">Belum ada data.</p></div>
       </div>
       <div class="box">
-        <h3>Per PIC Virtual</h3>
+        <h3>Per PIC Virtual · Bulan Ini</h3>
         <div id="byPicBox"><p class="muted">Belum ada data.</p></div>
       </div>
     </div>
     <div class="box">
-      <h3>Aktivitas Terbaru</h3>
+      <h3>Aktivitas BA Bulan Ini</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Waktu</th><th>Kode Toko</th><th>Nama Toko</th><th>Jenis</th><th>TRX Num</th><th>Nominal</th><th>PIC</th><th>Nomor BA</th></tr></thead>
@@ -661,6 +661,9 @@ and a complete visit evidence gallery for older multi-file records. -->
       </div>
       <div class="data-toolbar">
         <input type="text" id="dataSearch" placeholder="Cari Kode Toko, Nama Toko, TRX Num, Jenis, atau PIC...">
+        <input type="month" id="baMonthFilter" aria-label="Filter periode bulan BA">
+        <select id="baTypeFilter" aria-label="Filter jenis transaksi BA"><option value="">Semua Jenis</option></select>
+        <button class="btn-ghost" type="button" id="baAllPeriod">Semua Periode</button>
       </div>
       <p class="muted" id="dataCount"></p>
       <div class="table-wrap">
@@ -1675,12 +1678,14 @@ and a complete visit evidence gallery for older multi-file records. -->
   }
   fillSelect('jenis', JENIS_OPTIONS);
   fillSelect('baEditType', JENIS_OPTIONS);
+  fillSelect('baTypeFilter', JENIS_OPTIONS);
   fillSelect('picVirtual', PIC_OPTIONS);
   fillSelect('kPic', PIC_OPTIONS);
   fillSelect('visitOfficer', PIC_OPTIONS);
   document.getElementById('tanggalTransaksi').value = todayStr();
   document.getElementById('kTgl').value = todayStr();
   document.getElementById('visitDate').value = todayStr();
+  document.getElementById('baMonthFilter').value = todayStr().slice(0,7);
 
   function syncStoreFromMaster(codeId,nameId){var codeInput=document.getElementById(codeId),nameInput=document.getElementById(nameId),kode=codeInput.value.trim().toUpperCase();codeInput.value=kode;nameInput.value=kode&&masterToko[kode]?masterToko[kode]:'';}
   [['kodeToko','namaToko'],['kKodeToko','kNamaToko'],['visitStoreCode','visitStoreName'],['baEditStoreCode','baEditStoreName']].forEach(function(pair){document.getElementById(pair[0]).addEventListener('input',function(){syncStoreFromMaster(pair[0],pair[1]);});document.getElementById(pair[0]).addEventListener('change',function(){syncStoreFromMaster(pair[0],pair[1]);});});
@@ -1854,19 +1859,24 @@ and a complete visit evidence gallery for older multi-file records. -->
   });
 
   // ================= DASHBOARD =================
+  function baRecordDate(r){ return (r&&r.tanggalTransaksi)||((r&&r.timestamp)||'').slice(0,10); }
+  function baRecordMonth(r){ return baRecordDate(r).slice(0,7); }
   function renderDashboard(){
     var t = todayStr();
+    var activeMonth = t.slice(0,7);
+    var dashboardRecords = records.filter(function(r){ return baRecordMonth(r) === activeMonth; });
     var todayCount = 0, todayNominal = 0, totalNominal = 0;
     var jenisMap = {}, picMap = {};
 
-    records.forEach(function(r){
-      totalNominal += r.nominal;
-      if (r.timestamp && r.timestamp.slice(0,10) === t) {
-        todayCount++; todayNominal += r.nominal;
+    dashboardRecords.forEach(function(r){
+      var nominal = Number(r.nominal) || 0;
+      totalNominal += nominal;
+      if (baRecordDate(r) === t) {
+        todayCount++; todayNominal += nominal;
       }
       var j = r.jenis || '(Tanpa Jenis)';
       if (!jenisMap[j]) jenisMap[j] = { jenis:j, count:0, nominal:0 };
-      jenisMap[j].count++; jenisMap[j].nominal += r.nominal;
+      jenisMap[j].count++; jenisMap[j].nominal += nominal;
       var p = r.picVirtual || '(Tanpa PIC)';
       if (!picMap[p]) picMap[p] = { pic:p, count:0 };
       picMap[p].count++;
@@ -1874,7 +1884,7 @@ and a complete visit evidence gallery for older multi-file records. -->
 
     document.getElementById('statTodayCount').textContent = todayCount;
     document.getElementById('statTodayNominal').textContent = formatRupiah(todayNominal);
-    document.getElementById('statTotalCount').textContent = records.length;
+    document.getElementById('statTotalCount').textContent = dashboardRecords.length;
     document.getElementById('statTotalNominal').textContent = formatRupiah(totalNominal);
 
     var byJenis = Object.keys(jenisMap).map(function(k){ return jenisMap[k]; }).sort(function(a,b){ return b.nominal - a.nominal; });
@@ -1900,10 +1910,10 @@ and a complete visit evidence gallery for older multi-file records. -->
       }).join('');
     }
 
-    var recent = records.slice().sort(function(a,b){ return (b.timestamp||'').localeCompare(a.timestamp||''); }).slice(0,8);
+    var recent = dashboardRecords.slice().sort(function(a,b){ return (baRecordDate(b)+' '+(b.timestamp||'')).localeCompare(baRecordDate(a)+' '+(a.timestamp||'')); }).slice(0,8);
     var recentBody = document.getElementById('recentBody');
     if (recent.length === 0) {
-      recentBody.innerHTML = '<tr><td colspan="7" class="empty-state">Belum ada transaksi.</td></tr>';
+      recentBody.innerHTML = '<tr><td colspan="8" class="empty-state">Belum ada transaksi bulan ini.</td></tr>';
     } else {
       recentBody.innerHTML = recent.map(function(r){
         return '<tr><td>' + escapeHtml(formatDateTime(r.timestamp)) + '</td><td>' + escapeHtml(r.kodeToko) + '</td>' +
@@ -1929,8 +1939,8 @@ and a complete visit evidence gallery for older multi-file records. -->
     document.getElementById('monthClearRate').textContent=(monthComplaints.length?Math.round(monthClear/monthComplaints.length*100):0)+'%';
 
     var activities=[];
-    records.forEach(function(r){activities.push({date:r.timestamp||r.tanggalTransaksi,type:'ba',title:'BA '+(r.nomorBA||r.trxNum||'-'),sub:(r.kodeToko||'-')+' · '+formatRupiah(r.nominal)});});
-    komplainList.forEach(function(k){activities.push({date:k.createdAt||k.tgl,type:k.statusFU==='PENDING'?'pending':'clear',title:'Komplain '+(k.statusFU||'-'),sub:(k.kodeToko||'-')+' · '+(k.picVirtual||'-')});});
+    monthBa.forEach(function(r){activities.push({date:r.timestamp||r.tanggalTransaksi,type:'ba',title:'BA '+(r.nomorBA||r.trxNum||'-'),sub:(r.kodeToko||'-')+' · '+formatRupiah(r.nominal)});});
+    monthComplaints.forEach(function(k){activities.push({date:k.createdAt||k.tgl,type:k.statusFU==='PENDING'?'pending':'clear',title:'Komplain '+(k.statusFU||'-'),sub:(k.kodeToko||'-')+' · '+(k.picVirtual||'-')});});
     activities.sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
     document.getElementById('activityFeed').innerHTML=activities.length?activities.slice(0,10).map(function(a){return '<div class="activity-item"><span class="activity-dot '+a.type+'"></span><div><strong>'+escapeHtml(a.title)+'</strong><small>'+escapeHtml(a.sub)+' · '+escapeHtml(formatDateTime(a.date))+'</small></div></div>';}).join(''):'<p class="muted">Belum ada aktivitas.</p>';
 
@@ -2015,6 +2025,8 @@ and a complete visit evidence gallery for older multi-file records. -->
   document.getElementById('recordDetailClose').addEventListener('click',closeRecordDetail);document.getElementById('recordDetailModal').addEventListener('click',function(e){if(e.target===this)closeRecordDetail();});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&document.getElementById('recordDetailModal').classList.contains('open'))closeRecordDetail();});
 
   document.getElementById('dataSearch').addEventListener('input',function(){baCurrentPage=1;renderDataTab();});
+  ['baMonthFilter','baTypeFilter'].forEach(function(id){document.getElementById(id).addEventListener('change',function(){baCurrentPage=1;renderDataTab();});});
+  document.getElementById('baAllPeriod').addEventListener('click',function(){document.getElementById('baMonthFilter').value='';baCurrentPage=1;renderDataTab();});
   document.getElementById('btnResetAll').addEventListener('click', async function(){
     if (!isDeleteAdmin()) { alert('Akses ditolak. Penghapusan data hanya dapat dilakukan oleh NIK administrator.'); return; }
     if (records.length === 0) { alert('Data BA sudah kosong.'); return; }
@@ -2048,8 +2060,9 @@ and a complete visit evidence gallery for older multi-file records. -->
   document.getElementById('btnExportBaPdf').addEventListener('click', exportBaToPdf);
 
   function exportToExcel(){
-    if (records.length === 0) {
-      alert('Tidak ada data untuk diunduh.');
+    var sorted = filteredBaRecords();
+    if (sorted.length === 0) {
+      alert('Tidak ada data BA sesuai filter untuk diunduh.');
       return;
     }
     if (typeof XLSX === 'undefined') {
@@ -2057,7 +2070,6 @@ and a complete visit evidence gallery for older multi-file records. -->
       return;
     }
     try {
-      var sorted = records.slice().sort(function(a,b){ return (b.timestamp||'').localeCompare(a.timestamp||''); });
       var rows = sorted.map(function(r){
         return {
           'Waktu Input': formatDateTime(r.timestamp),
@@ -2083,7 +2095,9 @@ and a complete visit evidence gallery for older multi-file records. -->
       ];
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Rekap BA Potong');
-      var fname = 'rekap-ba-potong-' + todayStr() + '.xlsx';
+      var period = document.getElementById('baMonthFilter').value || 'semua-periode';
+      var type = document.getElementById('baTypeFilter').value || 'semua-jenis';
+      var fname = 'rekap-ba-potong-' + period + '-' + type.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '.xlsx';
       XLSX.writeFile(wb, fname);
     } catch (err) {
       console.error('Gagal membuat file Excel:', err);
@@ -2092,13 +2106,13 @@ and a complete visit evidence gallery for older multi-file records. -->
   }
 
   function exportBaToPdf(){
-    if (records.length === 0) { alert('Tidak ada data BA untuk diunduh.'); return; }
+    var sorted = filteredBaRecords();
+    if (sorted.length === 0) { alert('Tidak ada data BA sesuai filter untuk diunduh.'); return; }
     if (!window.jspdf || !window.jspdf.jsPDF) {
       alert('Fitur PDF belum termuat. Pastikan internet aktif, lalu buka ulang halaman.');
       return;
     }
     try {
-      var sorted = records.slice().sort(function(a,b){ return (b.timestamp||'').localeCompare(a.timestamp||''); });
       var body = sorted.map(function(r,idx){
         return [idx+1, formatDateTime(r.timestamp), r.kodeToko || '-', r.namaToko || '-', r.jenis || '-',
           formatDateOnly(r.tanggalTransaksi), r.nomorBooking || '-', r.trxNum || '-', formatRupiah(r.nominal),
@@ -2108,7 +2122,9 @@ and a complete visit evidence gallery for older multi-file records. -->
       var doc = new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
       doc.setFontSize(15); doc.text('DETAIL REKAP BA POTONG SALES', 14, 14);
       doc.setFontSize(9); doc.setTextColor(100);
-      doc.text('Total transaksi: ' + sorted.length + ' | Total nominal: ' + formatRupiah(totalNominal) + ' | Diunduh: ' + formatDateOnly(todayStr()), 14, 20);
+      var period = document.getElementById('baMonthFilter').value || 'Semua periode';
+      var type = document.getElementById('baTypeFilter').value || 'Semua jenis';
+      doc.text('Periode: ' + period + ' | Jenis: ' + type + ' | Total: ' + sorted.length + ' | Nominal: ' + formatRupiah(totalNominal), 14, 20);
       doc.autoTable({
         head:[['No','Waktu','Kode Toko','Nama Toko','Jenis','Tgl Transaksi','No. Booking','TRX/Serial','Nominal','PIC','Nomor BA','Keterangan','Bukti']],
         body:body, startY:25, theme:'grid',
@@ -2116,18 +2132,20 @@ and a complete visit evidence gallery for older multi-file records. -->
         headStyles:{fillColor:[14,159,110],textColor:255,fontStyle:'bold'},
         alternateRowStyles:{fillColor:[247,248,250]}, margin:{left:8,right:8}
       });
-      doc.save('Detail-Rekap-BA-Potong-' + todayStr() + '.pdf');
+      doc.save('Detail-Rekap-BA-Potong-' + String(period).replace(/\s+/g,'-') + '-' + type.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '.pdf');
     } catch (err) {
       console.error('Gagal membuat PDF BA:', err);
       alert('Gagal membuat PDF. Silakan coba lagi.');
     }
   }
 
-  function renderDataTab(){
+  function filteredBaRecords(){
     var q = document.getElementById('dataSearch').value.trim().toLowerCase();
+    var month = document.getElementById('baMonthFilter').value;
+    var type = document.getElementById('baTypeFilter').value;
     var sorted = records.slice().sort(function(a,b){ return (b.timestamp||'').localeCompare(a.timestamp||''); });
-    var filtered = !q ? sorted : sorted.filter(function(r){
-      return String(r.kodeToko||'').toLowerCase().indexOf(q) !== -1 ||
+    return sorted.filter(function(r){
+      var matchesSearch = !q || String(r.kodeToko||'').toLowerCase().indexOf(q) !== -1 ||
         String(r.namaToko||'').toLowerCase().indexOf(q) !== -1 ||
         String(r.trxNum||'').toLowerCase().indexOf(q) !== -1 ||
         String(r.nomorBA||'').toLowerCase().indexOf(q) !== -1 ||
@@ -2135,7 +2153,12 @@ and a complete visit evidence gallery for older multi-file records. -->
         String(r.jenis||'').toLowerCase().indexOf(q) !== -1 ||
         String(r.picVirtual||'').toLowerCase().indexOf(q) !== -1 ||
         String(r.keterangan||'').toLowerCase().indexOf(q) !== -1;
+      return matchesSearch && (!month || baRecordMonth(r) === month) && (!type || String(r.jenis||'').toUpperCase() === type.toUpperCase());
     });
+  }
+
+  function renderDataTab(){
+    var filtered = filteredBaRecords();
 
     document.getElementById('dataCount').textContent = filtered.length + ' dari ' + records.length + ' total data ditampilkan';
     currentFiltered = filtered;
